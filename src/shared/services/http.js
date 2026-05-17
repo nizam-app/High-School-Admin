@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const baseURL = 'http://103.208.183.250:5005/api/v1';
+// const baseURL = 'http://103.208.183.250:5005/api/v1';
+const baseURL = 'http://16.171.129.200//api/v1';
 const tokenStorageKey = 'admin_token';
 
 export const http = axios.create({
