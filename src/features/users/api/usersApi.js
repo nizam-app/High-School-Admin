@@ -152,6 +152,23 @@ const extractOptionArray = (value) => {
     .filter(Boolean);
 };
 
+/** Grades created by admin (Classes → Grades), used for user assignment dropdowns */
+export const getAdminGradeOptions = async () => {
+  const response = await http.get('/admin/grades/sections');
+  const payload = response?.data || {};
+  const root = payload?.data ?? payload;
+  if (!Array.isArray(root)) return [];
+
+  return root
+    .map((item) => {
+      const id = normalizeId(pick(item, ['id', '_id'], null));
+      const name = String(pick(item, ['label', 'gradeLevel', 'name'], '')).trim();
+      if (!id || !name) return null;
+      return { id, name };
+    })
+    .filter(Boolean);
+};
+
 const extractUsersList = (root) => {
   if (Array.isArray(root)) return root;
 
@@ -263,6 +280,62 @@ export const getUsers = async ({
   };
 };
 
+/**
+ * Build POST /users body matching the API contract (same shape as Postman).
+ * Extra fields like `grade`, `classGrade`, or `assignedClass` can trigger
+ * legacy grade validation on the server.
+ */
+export const buildCreateUserPayload = ({
+  role,
+  name,
+  phone,
+  pin,
+  confirmPin,
+  gradeLevel,
+  gradeId,
+  subject,
+  subjectId,
+  assignedSubjects,
+}) => {
+  const normalizedRole = String(role || '').trim().toLowerCase();
+  const payload = {
+    role: normalizedRole,
+    name: String(name || '').trim(),
+    phone: String(phone || '').trim(),
+    pin: String(pin || ''),
+    confirmPin: String(confirmPin || ''),
+  };
+
+  if (normalizedRole === 'student') {
+    const level = String(gradeLevel || '').trim();
+    if (level) payload.gradeLevel = level;
+    const id = normalizeId(gradeId);
+    if (id) payload.gradeId = id;
+    const subjects = extractStringArray(assignedSubjects);
+    if (subjects.length > 0) payload.assignedSubjects = subjects;
+  }
+
+  if (normalizedRole === 'teacher') {
+    const subjectName = String(subject || '').trim();
+    if (subjectName) payload.subject = subjectName;
+    const id = normalizeId(subjectId);
+    if (id) payload.subjectId = id;
+  }
+
+  return payload;
+};
+
+export const buildStudentGradePayload = ({ gradeLevel, gradeId, assignedSubjects } = {}) => {
+  const payload = {};
+  const level = String(gradeLevel || '').trim();
+  if (level) payload.gradeLevel = level;
+  const id = normalizeId(gradeId);
+  if (id) payload.gradeId = id;
+  const subjects = extractStringArray(assignedSubjects);
+  if (subjects.length > 0) payload.assignedSubjects = subjects;
+  return payload;
+};
+
 export const createUser = async (payload) => {
   const response = await http.post('/users', payload);
   return response.data;
@@ -284,6 +357,24 @@ export const updateAdminUser = async (userId, payload) => {
 export const updateAdminUserStatus = async (userId, status) => {
   const response = await http.patch(`/admin/users/${userId}/status`, { status });
   return response.data;
+};
+
+export const resetAdminUserPin = async (userId, { pin, confirmPin } = {}) => {
+  const id = String(userId || '').trim();
+  const response = await http.patch(`/admin/users/${encodeURIComponent(id)}/pin`, {
+    pin: String(pin || ''),
+    confirmPin: String(confirmPin ?? pin ?? ''),
+  });
+  const data = response?.data;
+  if (data && typeof data === 'object') {
+    const successFlag = data.success ?? data.ok;
+    if (successFlag === false) {
+      const err = new Error(data.message || 'Failed to reset PIN');
+      err.response = { data, status: response?.status };
+      throw err;
+    }
+  }
+  return data;
 };
 
 export const deleteAdminUser = async (userId) => {

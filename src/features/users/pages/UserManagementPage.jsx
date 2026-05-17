@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Search, X } from 'lucide-react';
-import { FiEdit2, FiTrash2, FiUserCheck, FiUserPlus, FiUserX } from 'react-icons/fi';
+import { FiEdit2, FiKey, FiTrash2, FiUserCheck, FiUserPlus, FiUserX } from 'react-icons/fi';
 import Swal from 'sweetalert2';
 import { getSubjectsList } from '../../classes/api/classesApi';
 import {
+  buildCreateUserPayload,
+  buildStudentGradePayload,
   createUser,
   deleteAdminUser,
-  getGrades,
+  getAdminGradeOptions,
   getSubjects,
+  resetAdminUserPin,
   updateAdminUser,
   updateAdminUserStatus,
 } from '../api/usersApi';
@@ -182,9 +185,9 @@ const UserManagementPage = () => {
     ? allUsers.filter((user) => user?.phoneVerified === true)
     : allUsers;
   const totalPages = Number(usersData?.totalPages || 1);
-  const { data: gradesFromApi = [] } = useQuery({
-    queryKey: ['grades-options'],
-    queryFn: getGrades,
+  const { data: gradesFromApi = [], isLoading: isGradesLoading } = useQuery({
+    queryKey: ['admin-grade-options'],
+    queryFn: getAdminGradeOptions,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
@@ -202,25 +205,15 @@ const UserManagementPage = () => {
   });
 
   const gradeOptions = useMemo(() => {
-    const fromApi = [...(usersData?.gradeOptions || []), ...gradesFromApi].filter(
-      (item) => item?.id && item?.name
-    );
-    const fromUsers = users
-      .map((user) => {
-        const id = normalizeValue(user.gradeId || '');
-        const name = normalizeValue(user.grade || '');
-        if (!id || !name) return null;
-        return { id, name };
-      })
-      .filter(Boolean);
-
-    const merged = [...fromApi, ...fromUsers];
+    const fromAdmin = gradesFromApi.filter((item) => item?.id && item?.name);
+    const fromUsersApi = (usersData?.gradeOptions || []).filter((item) => item?.id && item?.name);
+    const merged = [...fromAdmin, ...fromUsersApi];
     const unique = new Map();
     merged.forEach((item) => {
       if (!unique.has(item.id)) unique.set(item.id, item);
     });
     return Array.from(unique.values());
-  }, [users, usersData?.gradeOptions, gradesFromApi]);
+  }, [gradesFromApi, usersData?.gradeOptions]);
 
   const subjectOptions = useMemo(() => {
     const fromApi = [...(usersData?.subjectOptions || []), ...subjectsFromApi]
@@ -245,7 +238,7 @@ const UserManagementPage = () => {
       setFormError('');
       queryClient.invalidateQueries({ queryKey: ['admin-users'] });
       queryClient.invalidateQueries({ queryKey: ['admin-users-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['grades-options'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-grade-options'] });
       queryClient.invalidateQueries({ queryKey: ['subjects-options'] });
     },
     onError: (error) => {
@@ -302,6 +295,16 @@ const UserManagementPage = () => {
     },
     onError: (error) => {
       setRowActionError(error?.response?.data?.message || 'Failed to delete user');
+    },
+  });
+
+  const resetPinMutation = useMutation({
+    mutationFn: ({ userId, pin, confirmPin }) => resetAdminUserPin(userId, { pin, confirmPin }),
+    onSuccess: () => {
+      setRowActionError('');
+    },
+    onError: (error) => {
+      setRowActionError(error?.response?.data?.message || 'Failed to reset PIN');
     },
   });
 
@@ -368,12 +371,15 @@ const UserManagementPage = () => {
 
     let selectedGrade = null;
     if (formRole === 'student') {
-      const fallbackGrade = gradeOptions[0] || null;
-      selectedGrade =
-        gradeOptions.find((item) => String(item.id) === selectedGradeId) || fallbackGrade;
+      if (gradeOptions.length === 0) {
+        setFormError('No grades available. Create grades in Classes first.');
+        return;
+      }
+
+      selectedGrade = gradeOptions.find((item) => String(item.id) === selectedGradeId);
 
       if (!selectedGrade?.id) {
-        setFormError('Invalid gradeId. Please load grades from backend and select one.');
+        setFormError('Please select a valid grade.');
         return;
       }
     }
@@ -385,47 +391,20 @@ const UserManagementPage = () => {
 
     const gradeName = normalizeValue(selectedGrade?.name || '');
     const gradeId = normalizeValue(selectedGrade?.id || '');
-    const backendGradeLevel = normalizeValue(selectedGrade?.level || '');
-    const normalizedRole = formRole.toLowerCase();
-    const roleLabel = normalizedRole === 'student' ? 'Student' : 'Teacher';
 
-    const payload = {
-      role: normalizedRole,
-      userType: normalizedRole,
-      roleName: roleLabel,
+    const payload = buildCreateUserPayload({
+      role: formRole,
       name: fullName,
-      fullName,
       phone,
       pin,
-      password: pin,
       confirmPin,
       ...(formRole === 'student'
-        ? {
-            grade: gradeName,
-            gradeName,
-            gradeId,
-            ...(backendGradeLevel
-              ? { gradeLevel: backendGradeLevel, gradeNumber: backendGradeLevel }
-              : {}),
-            grades: [gradeId],
-            classGrade: gradeId,
-            classGrades: [gradeId],
-            assignedGrade: gradeId,
-            assignedGrades: [gradeId],
-            assignedClass: gradeId,
-            assignedClasses: [gradeId],
-            assignedClassesPayload: [{ _id: gradeId, name: gradeName }],
-          }
-        : {}),
-      ...(formRole === 'teacher'
-        ? {
-            ...(selectedSubject?.id ? { subjectId: normalizeValue(selectedSubject.id) } : {}),
+        ? { gradeLevel: gradeName, gradeId }
+        : {
             subject,
-            mainSubject: subject,
-            subjects: [subject],
-          }
-        : {}),
-    };
+            subjectId: selectedSubject?.id ? normalizeValue(selectedSubject.id) : undefined,
+          }),
+    });
 
     createUserMutation.mutate(payload);
   };
@@ -534,14 +513,15 @@ const UserManagementPage = () => {
         setEditError('Please select a valid grade');
         return;
       }
+      const gradeName = normalizeValue(grade.name);
       const payload = {
-        role: 'student',
         name: fullName,
         phone,
-        gradeId,
-        gradeLevel: normalizeValue(grade.level || grade.name),
-        assignedSubjectIds: Array.isArray(editUser.assignedSubjectIds) ? editUser.assignedSubjectIds : [],
-        assignedSubjects: Array.isArray(editUser.assignedSubjects) ? editUser.assignedSubjects : [],
+        ...buildStudentGradePayload({
+          gradeLevel: gradeName,
+          gradeId,
+          assignedSubjects: editUser.assignedSubjects,
+        }),
       };
       updateUserMutation.mutate({ userId: editUser.id, payload });
       return;
@@ -557,6 +537,67 @@ const UserManagementPage = () => {
     const currentStatus = normalizeValue(user?.status).toLowerCase();
     const nextStatus = currentStatus === 'active' ? 'blocked' : 'active';
     toggleStatusMutation.mutate({ userId: user.id, nextStatus });
+  };
+
+  const handleResetUserPin = async (user) => {
+    const userName = normalizeValue(user?.name) || 'this user';
+    const safeUserName = userName
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const { value: pinValues, isConfirmed } = await Swal.fire({
+      title: 'Reset PIN',
+      html: `
+        <p class="mb-3 text-sm text-[#5b739f]">Set a new PIN for <strong>${safeUserName}</strong></p>
+        <input id="swal-reset-pin" type="password" class="swal2-input" placeholder="New PIN" autocomplete="new-password" />
+        <input id="swal-reset-confirm-pin" type="password" class="swal2-input" placeholder="Confirm PIN" autocomplete="new-password" />
+      `,
+      focusConfirm: false,
+      showCancelButton: true,
+      confirmButtonText: 'Reset PIN',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#1f3f93',
+      preConfirm: () => {
+        const pin = String(document.getElementById('swal-reset-pin')?.value || '').trim();
+        const confirmPin = String(document.getElementById('swal-reset-confirm-pin')?.value || '').trim();
+        if (!pin || !confirmPin) {
+          Swal.showValidationMessage('Please enter and confirm the new PIN');
+          return false;
+        }
+        if (pin !== confirmPin) {
+          Swal.showValidationMessage('PIN and Confirm PIN do not match');
+          return false;
+        }
+        return { pin, confirmPin };
+      },
+    });
+
+    if (!isConfirmed || !pinValues) return;
+
+    resetPinMutation.mutate(
+      { userId: user.id, pin: pinValues.pin, confirmPin: pinValues.confirmPin },
+      {
+        onSuccess: async () => {
+          await Swal.fire({
+            title: 'PIN Reset',
+            text: `PIN updated for ${userName}.`,
+            icon: 'success',
+            confirmButtonColor: '#1f3f93',
+          });
+        },
+        onError: async (error) => {
+          const status = error?.response?.status;
+          const message = error?.response?.data?.message || error?.message || 'Failed to reset PIN';
+          await Swal.fire({
+            title: 'Reset Failed',
+            text: status ? `(${status}) ${message}` : message,
+            icon: 'error',
+            confirmButtonColor: '#1f3f93',
+          });
+        },
+      }
+    );
   };
 
   const handleDeleteUser = async (user) => {
@@ -684,13 +725,12 @@ const UserManagementPage = () => {
         return;
       }
 
-      const payload = {
-        role: 'student',
+      const gradeName = normalizeValue(grade.name);
+      const payload = buildStudentGradePayload({
+        gradeLevel: gradeName,
         gradeId,
-        gradeLevel: normalizeValue(grade.level || grade.name),
-        assignedSubjectIds: [],
         assignedSubjects: subjects,
-      };
+      });
       updateAssignmentMutation.mutate({ userId: selectedUser.id, payload });
       return;
     }
@@ -954,12 +994,29 @@ const UserManagementPage = () => {
                           </button>
                           <button
                             type="button"
+                            className="text-[#7c5cff] disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Reset PIN"
+                            onClick={() => handleResetUserPin(user)}
+                            disabled={
+                              resetPinMutation.isPending ||
+                              toggleStatusMutation.isPending ||
+                              deleteUserMutation.isPending
+                            }
+                          >
+                            <FiKey size={16} />
+                          </button>
+                          <button
+                            type="button"
                             className={`disabled:cursor-not-allowed disabled:opacity-50 ${
                               isActive ? 'text-[#f0a115]' : 'text-[#0ca65f]'
                             }`}
                             title={isActive ? 'Block user' : 'Activate user'}
                             onClick={() => handleToggleUserStatus(user)}
-                            disabled={toggleStatusMutation.isPending || deleteUserMutation.isPending}
+                            disabled={
+                              resetPinMutation.isPending ||
+                              toggleStatusMutation.isPending ||
+                              deleteUserMutation.isPending
+                            }
                           >
                             {isActive ? <FiUserX size={16} /> : <FiUserCheck size={16} />}
                           </button>
@@ -968,7 +1025,11 @@ const UserManagementPage = () => {
                             className="text-[#e10000] disabled:cursor-not-allowed disabled:opacity-50"
                             title="Delete user"
                             onClick={() => handleDeleteUser(user)}
-                            disabled={deleteUserMutation.isPending || toggleStatusMutation.isPending}
+                            disabled={
+                              resetPinMutation.isPending ||
+                              deleteUserMutation.isPending ||
+                              toggleStatusMutation.isPending
+                            }
                           >
                             <FiTrash2 size={16} />
                           </button>
@@ -1063,9 +1124,16 @@ const UserManagementPage = () => {
                   <select
                     value={editValues.gradeId}
                     onChange={(event) => handleEditChange('gradeId', event.target.value)}
-                    className="h-12 w-full rounded-lg border border-[#d6e3fb] px-3 text-sm outline-none focus:border-[#1f3f93]"
+                    disabled={isGradesLoading || gradeOptions.length === 0}
+                    className="h-12 w-full rounded-lg border border-[#d6e3fb] px-3 text-sm outline-none focus:border-[#1f3f93] disabled:bg-[#f5f7fb]"
                   >
-                    <option value="">Select grade</option>
+                    <option value="">
+                      {isGradesLoading
+                        ? 'Loading grades...'
+                        : gradeOptions.length === 0
+                          ? 'No grades — create in Classes'
+                          : 'Select grade'}
+                    </option>
                     {gradeOptions.map((grade) => (
                       <option key={grade.id} value={grade.id}>
                         {grade.name}
@@ -1384,9 +1452,16 @@ const UserManagementPage = () => {
                   <select
                     value={formValues.grade}
                     onChange={(event) => handleFormChange('grade', event.target.value)}
-                    className="h-11 w-full rounded-lg border border-[#d6e3fb] px-3 text-sm outline-none focus:border-[#1f3f93]"
+                    disabled={isGradesLoading || gradeOptions.length === 0}
+                    className="h-11 w-full rounded-lg border border-[#d6e3fb] px-3 text-sm outline-none focus:border-[#1f3f93] disabled:bg-[#f5f7fb]"
                   >
-                    <option value="">Select a grade</option>
+                    <option value="">
+                      {isGradesLoading
+                        ? 'Loading grades...'
+                        : gradeOptions.length === 0
+                          ? 'No grades — create in Classes'
+                          : 'Select a grade'}
+                    </option>
                     {gradeOptions.map((grade) => (
                       <option key={grade.id} value={grade.id}>
                         {grade.name}

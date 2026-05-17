@@ -1,9 +1,6 @@
 import axios from 'axios';
 
-const rawBaseURL = (import.meta.env.VITE_API_BASE_URL || '/api/v1').trim();
-const isAbsoluteBaseURL = /^https?:\/\//i.test(rawBaseURL);
-const normalizedRelativeBaseURL = rawBaseURL.startsWith('/') ? rawBaseURL : `/${rawBaseURL}`;
-const baseURL = isAbsoluteBaseURL ? rawBaseURL : normalizedRelativeBaseURL;
+const baseURL = 'http://103.208.183.250:5005/api/v1';
 const tokenStorageKey = 'admin_token';
 
 export const http = axios.create({
