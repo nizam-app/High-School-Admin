@@ -1,7 +1,8 @@
 import axios from 'axios';
 
-// const baseURL = 'http://103.208.183.250:5005/api/v1';
-const baseURL = 'http://16.171.129.200//api/v1';
+// Use Vite env var `VITE_API_BASE` in dev/production, otherwise fall back to relative path
+// Relative path ("/api/v1") allows the Vite dev server proxy to forward requests
+const baseURL = import.meta.env.VITE_API_BASE || '/api/v1';
 const tokenStorageKey = 'admin_token';
 
 export const http = axios.create({
