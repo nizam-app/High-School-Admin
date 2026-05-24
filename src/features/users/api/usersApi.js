@@ -133,6 +133,21 @@ const extractStringArray = (value) => {
   return [];
 };
 
+const normalizeIsActive = (item) => {
+  const raw = pick(item, ['isActive', 'active'], null);
+  if (typeof raw === 'boolean') return raw;
+  if (typeof raw === 'number') return raw === 1;
+
+  const status = String(pick(item, ['status'], '')).trim().toLowerCase();
+  if (['inactive', 'blocked', 'disabled'].includes(status)) return false;
+  if (status === 'active') return true;
+
+  if (raw === null || raw === undefined) return true;
+  const normalized = String(raw).trim().toLowerCase();
+  if (['false', '0', 'no', 'inactive'].includes(normalized)) return false;
+  return true;
+};
+
 const extractOptionArray = (value) => {
   if (!Array.isArray(value)) return [];
 
@@ -147,6 +162,7 @@ const extractOptionArray = (value) => {
         id: String(id),
         name: String(name),
         level: level !== null && level !== undefined ? String(level) : null,
+        isActive: normalizeIsActive(item),
       };
     })
     .filter(Boolean);

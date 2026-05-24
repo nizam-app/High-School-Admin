@@ -1,5 +1,23 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { getGrades } from '../../users/api/usersApi';
+
 const GeneralTimetablePage = () => {
-  const activeClasses = ['4th', '5th', '6th', '7th'];
+  const {
+    data: grades = [],
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['timetable-grades'],
+    queryFn: getGrades,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const activeClasses = useMemo(
+    () => grades.filter((grade) => grade?.isActive !== false),
+    [grades]
+  );
 
   return (
     <div className="rounded-[10px] border border-[#d6e3fb] bg-white p-5">
@@ -39,17 +57,31 @@ const GeneralTimetablePage = () => {
           <div>
             <h3 className="text-sm font-semibold text-[#17367a]">Active Classes</h3>
             <div className="mt-4 space-y-2">
-              {activeClasses.map((cls) => (
-                <div
-                  key={cls}
-                  className="flex items-center justify-between rounded-lg border border-[#dde6ff] bg-white px-3 py-2"
-                >
-                  <span className="text-sm font-medium text-[#17367a]">{cls}</span>
-                  <span className="rounded-full bg-[#dcf8e9] px-2 py-0.5 text-[11px] font-semibold text-[#047857]">
-                    Active
-                  </span>
-                </div>
-              ))}
+              {isLoading && (
+                <p className="text-sm text-[#6f84b4]">Loading grades...</p>
+              )}
+
+              {!isLoading && isError && (
+                <p className="text-sm text-red-600">Failed to load grades from the server.</p>
+              )}
+
+              {!isLoading && !isError && activeClasses.length === 0 && (
+                <p className="text-sm text-[#6f84b4]">No active grades found.</p>
+              )}
+
+              {!isLoading &&
+                !isError &&
+                activeClasses.map((grade) => (
+                  <div
+                    key={grade.id}
+                    className="flex items-center justify-between rounded-lg border border-[#dde6ff] bg-white px-3 py-2"
+                  >
+                    <span className="text-sm font-medium text-[#17367a]">{grade.name}</span>
+                    <span className="rounded-full bg-[#dcf8e9] px-2 py-0.5 text-[11px] font-semibold text-[#047857]">
+                      Active
+                    </span>
+                  </div>
+                ))}
             </div>
           </div>
         </div>
