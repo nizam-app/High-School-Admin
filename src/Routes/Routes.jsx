@@ -17,85 +17,90 @@ import LoginPage from '../features/auth/pages/LoginPage';
 import RequireAuth from '../features/auth/components/RequireAuth';
 import GuestOnly from '../features/auth/components/GuestOnly';
 
-export const router = createBrowserRouter([
+export const router = createBrowserRouter(
+  [
+    {
+      Component: GuestOnly,
+      children: [
+        {
+          path: '/auth/login',
+          Component: LoginPage,
+        },
+      ],
+    },
+    {
+      Component: RequireAuth,
+      children: [
+        {
+          path: '/',
+          Component: DashboardLayout,
+          children: [
+            {
+              index: true,
+              Component: DashboardPage,
+            },
+            {
+              path: 'users',
+              Component: UserManagementPage,
+            },
+            {
+              path: 'classes-content',
+              Component: ClassesContentPage,
+            },
+            {
+              path: 'analytics',
+              Component: AnalyticsPage,
+              children: [
+                {
+                  index: true,
+                  Component: AnalyticsOverviewPage,
+                },
+                {
+                  path: 'student-progress',
+                  Component: AnalyticsStudentProgressPage,
+                },
+                {
+                  path: 'teacher-activity',
+                  Component: AnalyticsTeacherActivityPage,
+                },
+              ],
+            },
+            {
+              path: 'timetable',
+              Component: TimetablePage,
+              children: [
+                {
+                  index: true,
+                  Component: GeneralTimetablePage,
+                },
+                {
+                  path: 'general',
+                  Component: GeneralTimetablePage,
+                },
+                {
+                  path: 'class-specific',
+                  Component: ClassSpecificTimetablePage,
+                },
+              ],
+            },
+            {
+              path: 'live-sessions',
+              Component: LiveSessionsPage,
+            },
+            {
+              path: 'notifications',
+              Component: NotificationsPage,
+            },
+            {
+              path: 'settings',
+              Component: SettingsPage,
+            },
+          ],
+        },
+      ],
+    },
+  ],
   {
-    Component: GuestOnly,
-    children: [
-      {
-        path: '/auth/login',
-        Component: LoginPage,
-      },
-    ],
-  },
-  {
-    Component: RequireAuth,
-    children: [
-      {
-        path: '/',
-        Component: DashboardLayout,
-        children: [
-          {
-            index: true,
-            Component: DashboardPage,
-          },
-          {
-            path: 'users',
-            Component: UserManagementPage,
-          },
-          {
-            path: 'classes-content',
-            Component: ClassesContentPage,
-          },
-          {
-            path: 'analytics',
-            Component: AnalyticsPage,
-            children: [
-              {
-                index: true,
-                Component: AnalyticsOverviewPage,
-              },
-              {
-                path: 'student-progress',
-                Component: AnalyticsStudentProgressPage,
-              },
-              {
-                path: 'teacher-activity',
-                Component: AnalyticsTeacherActivityPage,
-              },
-            ],
-          },
-          {
-            path: 'timetable',
-            Component: TimetablePage,
-            children: [
-              {
-                index: true,
-                Component: GeneralTimetablePage,
-              },
-              {
-                path: 'general',
-                Component: GeneralTimetablePage,
-              },
-              {
-                path: 'class-specific',
-                Component: ClassSpecificTimetablePage,
-              },
-            ],
-          },
-          {
-            path: 'live-sessions',
-            Component: LiveSessionsPage,
-          },
-          {
-            path: 'notifications',
-            Component: NotificationsPage,
-          },
-          {
-            path: 'settings',
-            Component: SettingsPage,
-          },
-        ],
-      },
-    ],
-  },
-]);
+    basename: '/admin',
+  }
+);

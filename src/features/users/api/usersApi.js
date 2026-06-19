@@ -328,7 +328,8 @@ export const buildCreateUserPayload = ({
     const id = normalizeId(gradeId);
     if (id) payload.gradeId = id;
     const subjects = extractStringArray(assignedSubjects);
-    if (subjects.length > 0) payload.assignedSubjects = subjects;
+    // Include assignedSubjects even when empty so callers can clear subjects on the server
+    if (assignedSubjects !== undefined) payload.assignedSubjects = subjects;
   }
 
   if (normalizedRole === 'teacher') {
@@ -348,7 +349,8 @@ export const buildStudentGradePayload = ({ gradeLevel, gradeId, assignedSubjects
   const id = normalizeId(gradeId);
   if (id) payload.gradeId = id;
   const subjects = extractStringArray(assignedSubjects);
-  if (subjects.length > 0) payload.assignedSubjects = subjects;
+  // Always include assignedSubjects array (may be empty) so updates can clear subjects
+  payload.assignedSubjects = subjects;
   return payload;
 };
 
